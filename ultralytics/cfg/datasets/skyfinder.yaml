@@ -12,15 +12,15 @@ path: /media/yanggang/847C02507C023D84/skyfinder # dataset root dir
 train: train/images # train images (relative to 'path') 4 images
 val: val/images # val images (relative to 'path') 4 images
 test: # test images (optional)
-
+nc: 2
 # Classes
 names:
   0: sky
   1: background
 
 colors:
-  0: [255, 255, 255]
-  1: [0, 0, 0]
+  0: [70, 130, 180]
+  1: [70, 70, 70]
 
 
 # Download script/URL (optional)

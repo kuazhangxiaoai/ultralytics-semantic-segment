@@ -1100,25 +1100,14 @@ def plot_masks(
     """
     if isinstance(images, torch.Tensor):
         images = images.cpu().float().numpy()
-    if isinstance(cls, torch.Tensor):
-        cls = cls.cpu().numpy()
-    if isinstance(bboxes, torch.Tensor):
-        bboxes = bboxes.cpu().numpy()
     if isinstance(masks, torch.Tensor):
-        masks = masks.cpu().numpy()
-    if isinstance(kpts, torch.Tensor):
-        kpts = kpts.cpu().numpy()
-    if isinstance(batch_idx, torch.Tensor):
-        batch_idx = batch_idx.cpu().numpy()
+        masks = masks.cpu().float().numpy()
 
     bs, _, h, w = images.shape  # batch size, _, height, width
     bs = min(bs, max_subplots)  # limit plot images
     ns = np.ceil(bs**0.5)  # number of subplots (square)
     if np.max(images[0]) <= 1:
         images *= 255  # de-normalise (optional)
-
-    if np.max(masks[0]) <= 1:
-        masks *= 255
 
     # Build Image
     mosaic = np.full((int(ns * h), int(ns * w), 3), 255, dtype=np.uint8)  # init
@@ -1128,11 +1117,10 @@ def plot_masks(
         mosaic[y : y + h, x : x + w, :] = images[i].transpose(1, 2, 0)
         mask_bgr = np.ones((h, w, 3), dtype=np.uint8) * 255
         if one_hot:
-            # mask = masks[i].copy().transpose(1, 2, 0)
-            mask = masks.argmax(axis=0).astype(np.uint8)
+            mask = masks[i].argmax(axis=0)
             for j in range(nc):
                 r, g, b = colors[j]
-                mask_bgr[mask[j] == j] = (b, g, r)
+                mask_bgr[mask == j] = np.array([b, g, r]).astype(np.uint8)
                 # mask_bgr[mask[:, :, j] > 125, :] = np.array([b, g, r]).astype(np.uint8)
         else:
             for j in range(nc):
