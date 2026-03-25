@@ -68,6 +68,7 @@ from ultralytics.nn.modules import (
     Segment,
     Segment26,
     SemanticSegment,
+    YunetSegment,
     TorchVision,
     WorldDetect,
     YOLOEDetect,
@@ -1639,7 +1640,9 @@ def parse_model(d, ch, verbose=True):
             A2C2f,
         }
     )
-    for i, (f, n, m, args) in enumerate(d["backbone"] + d["head"]):  # from, number, module, args
+    modules = d["backbone"] + d["head"] if "backbone" in d.keys() else d["encoder"] + d["neck"] + d["decoder"]
+
+    for i, (f, n, m, args) in enumerate(modules):  # from, number, module, args
         m = (
             getattr(torch.nn, m[3:])
             if "nn." in m
@@ -1702,12 +1705,13 @@ def parse_model(d, ch, verbose=True):
                 OBB,
                 OBB26,
                 SemanticSegment,
+                YunetSegment
             }
         ):
             args.extend([reg_max, end2end, [ch[x] for x in f]]) if m is not SemanticSegment else args.append(
                 [ch[x] for x in f]
             )
-            if m is Segment or m is YOLOESegment or m is Segment26 or m is YOLOESegment26 or m is SemanticSegment:
+            if m is Segment or m is YOLOESegment or m is Segment26 or m is YOLOESegment26 or m is SemanticSegment or m is YunetSegment:
                 args[2] = make_divisible(min(args[2], max_channels) * width, 8)
             if m in {Detect, YOLOEDetect, Segment, Segment26, YOLOESegment, YOLOESegment26, Pose, Pose26, OBB, OBB26}:
                 m.legacy = legacy

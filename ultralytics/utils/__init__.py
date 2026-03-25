@@ -43,6 +43,7 @@ ASSETS_URL = "https://github.com/ultralytics/assets/releases/download/v0.0.0"  #
 SEMSEG_URL = "https://github.com/kuazhangxiaoai/ultralytics-semantic-segment/releases/download"
 DEFAULT_CFG_PATH = ROOT / "cfg/default.yaml"
 SEMSEG_CFG_PATH = ROOT / "cfg/semseg.yaml"
+YUSEG_CFG_PATH = ROOT / "cfg/yuseg.yaml"
 NUM_THREADS = min(8, max(1, os.cpu_count() - 1))  # number of YOLO multiprocessing threads
 AUTOINSTALL = str(os.getenv("YOLO_AUTOINSTALL", True)).lower() == "true"  # global auto-install mode
 VERBOSE = str(os.getenv("YOLO_VERBOSE", True)).lower() == "true"  # global verbose mode
@@ -647,6 +648,12 @@ for k, v in SEMSEG_CFG_DICT.items():
 SEMSEG_CFG_DICT_KEYS = SEMSEG_CFG_DICT.keys()
 SEMSEG_CFG = IterableSimpleNamespace(**SEMSEG_CFG_DICT)
 
+YUSEG_CFG_DICT = YAML.load(YUSEG_CFG_PATH)
+for k, v in YUSEG_CFG_DICT.items():
+    if isinstance(v, str) and v.lower() == "none":
+        YUSEG_CFG_DICT[k] = None
+YUSEG_CFG_DICT_KEYS = YUSEG_CFG_DICT.keys()
+YUSEG_CFG = IterableSimpleNamespace(**YUSEG_CFG_DICT)
 
 def read_device_model() -> str:
     """Read the device model information from the system and cache it for quick access.

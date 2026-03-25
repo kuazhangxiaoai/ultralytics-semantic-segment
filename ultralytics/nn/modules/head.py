@@ -15,7 +15,7 @@ from ultralytics.utils import NOT_MACOS14
 from ultralytics.utils.tal import dist2bbox, dist2rbox, make_anchors
 from ultralytics.utils.torch_utils import TORCH_1_11, fuse_conv_and_bn, smart_inference_mode
 
-from .block import DFL, SAVPE, BNContrastiveHead, ContrastiveHead, Proto, Proto26, RealNVP, Residual, SwiGLUFFN
+from .block import DFL, SAVPE, BNContrastiveHead, ContrastiveHead, Proto, Proto26, RealNVP, Residual, SwiGLUFFN, C3k2
 from .conv import Conv, DWConv
 from .transformer import MLP, DeformableTransformerDecoder, DeformableTransformerDecoderLayer
 from .utils import bias_init_with_prob, linear_init
@@ -28,6 +28,7 @@ __all__ = (
     "RTDETRDecoder",
     "Segment",
     "SemanticSegment",
+    "YunetSegment"
     "YOLOEDetect",
     "YOLOESegment",
     "v10Detect",
@@ -2024,3 +2025,43 @@ class SemanticSegment(nn.Module):
             return out_0, out
         else:
             return out
+
+class YunetSegment(nn.Module):
+    """YOLO Semseg head for senmantic models.
+
+        This class extends the Detect head to include mask prediction capabilities for instance segmentation tasks.
+
+        Attributes:
+            nc (int): Number of classes.
+            ch (int): Number of channels.
+
+        Methods:
+            forward: Return mask.
+
+        Examples:
+            Create a segmentation head
+            >>> SemanticSegment = SemanticSegment(nc=80, ch=(256, 512, 1024))
+            >>> x = [torch.randn(1, 256, 80, 80), torch.randn(1, 512, 40, 40), torch.randn(1, 1024, 20, 20)]
+            >>> outputs = SemanticSegment(x)
+        """
+    def __init__(self):
+        super().__init__(nc=80, ns=8, npr=256, ch=())
+        self.head = nn.Sequential(
+            Conv(self.chs, self.chs, k=3, s=1, p=1),
+            C3k2(self.chs, self.chs),
+            nn.Conv2d(self.chs, self.nc, kernel_size=1, stride=1, padding=0)
+        )
+
+
+    def forward(self, x):
+        """Model forward function of semantic segment modular.
+
+        Args:
+            x(list): features from backbone or neck.
+
+        Returns:
+            mask(torch.Tensor): output for semantic segment task
+        """
+
+        out = self.head(x[0])
+        return out
