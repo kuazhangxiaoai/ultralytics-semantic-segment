@@ -380,7 +380,7 @@ class DetectionModel(BaseModel):
         """
         super().__init__()
         self.yaml = cfg if isinstance(cfg, dict) else yaml_model_load(cfg)  # cfg dict
-        if self.yaml["backbone"][0][2] == "Silence":
+        if "backbone" in self.yaml.keys() and self.yaml["backbone"][0][2] == "Silence" :
             LOGGER.warning(
                 "YOLOv9 `Silence` module is deprecated in favor of torch.nn.Identity. "
                 "Please delete local *.pt file and re-download the latest model checkpoint."

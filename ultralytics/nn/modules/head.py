@@ -2044,12 +2044,15 @@ class YunetSegment(nn.Module):
             >>> x = [torch.randn(1, 256, 80, 80), torch.randn(1, 512, 40, 40), torch.randn(1, 1024, 20, 20)]
             >>> outputs = SemanticSegment(x)
         """
-    def __init__(self):
-        super().__init__(nc=80, ns=8, npr=256, ch=())
+    def __init__(self, nc=80, ns=8, npr=256, arg=None, ch=()):
+        super().__init__()
+        self.npr = npr
+        self.ns = ns
+        self.chs = torch.tensor(ch).sum().item()
         self.head = nn.Sequential(
-            Conv(self.chs, self.chs, k=3, s=1, p=1),
-            C3k2(self.chs, self.chs),
-            nn.Conv2d(self.chs, self.nc, kernel_size=1, stride=1, padding=0)
+            Conv(self.chs, self.npr * 2, k=3, s=1, p=1),
+            C3k2(self.npr * 2, self.chs,),
+            nn.Conv2d(self.chs, nc, kernel_size=1, stride=1, padding=0)
         )
 
 
