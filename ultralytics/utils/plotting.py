@@ -1078,6 +1078,7 @@ def plot_masks(
     save: bool = True,
     conf_thres: float = 0.25,
     one_hot=False,
+    background=(255,255,255)
 ) -> np.ndarray | None:
     """Plot image and mask for semseg task.
 
@@ -1133,22 +1134,17 @@ def plot_masks(
 
     # Build Image
     mosaic = np.full((int(ns * h), int(ns * w), 3), 255, dtype=np.uint8)  # init
-    mask_mosaic = np.full((int(ns * h), int(ns * w), 3), 255, dtype=np.uint8)
+    mask_mosaic = np.full((int(ns * h), int(ns * w), 3), background, dtype=np.uint8)
+    if one_hot:
+        masks = masks.argmax(axis=1).astype(np.uint8)
+
     for i in range(bs):
         x, y = int(w * (i // ns)), int(h * (i % ns))  # block origin
         mosaic[y : y + h, x : x + w, :] = images[i].transpose(1, 2, 0)
         mask_bgr = np.ones((h, w, 3), dtype=np.uint8) * 255
-        if one_hot:
-            # mask = masks[i].copy().transpose(1, 2, 0)
-            mask = masks.argmax(axis=0).astype(np.uint8)
-            for j in range(nc):
-                r, g, b = colors[j]
-                mask_bgr[mask[j] == j] = (b, g, r)
-                # mask_bgr[mask[:, :, j] > 125, :] = np.array([b, g, r]).astype(np.uint8)
-        else:
-            for j in range(nc):
-                r, g, b = colors[j]
-                mask_bgr[masks[i] == j, :] = np.array([b, g, r]).astype(np.uint8)
+        for j in range(nc):
+            r, g, b = colors[j]
+            mask_bgr[masks[i] == j, :] = np.array([b, g, r]).astype(np.uint8)
 
         mask_mosaic[y : y + h, x : x + w, :] = mask_bgr
 

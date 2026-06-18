@@ -69,7 +69,7 @@ class SemSegTrainer(yolo.detect.DetectionTrainer):
             batch["masks"] = msks
         return batch
 
-    def build_dataset(self, img_path, mode="train", batch=None):
+    def build_dataset(self, img_path:str, mode:str="train", batch:int=None):
         """Build RSI Dataset.
 
         Args:
@@ -111,8 +111,8 @@ class SemSegTrainer(yolo.detect.DetectionTrainer):
             nc=self.data["nc"],
             names=self.data["names"],
             colors=self.data["colors"],
-            fname=self.save_dir / f"train_batch{ni}.jpg",
-            mname=self.save_dir / f"mask_batch{ni}.jpg",
+            fname=self.save_dir / f"train_batch_image{ni}.jpg",
+            mname=self.save_dir / f"train_batch_mask{ni}.jpg",
             on_plot=self.on_plot,
         )
 

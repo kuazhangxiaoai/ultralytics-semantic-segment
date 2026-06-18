@@ -3803,7 +3803,7 @@ def semseg_transforms(dataset, imgsz, hyp, stretch=False):
         >>> transforms = v8_transforms(dataset, imgsz=640, hyp=hyp)
         >>> augmented_data = transforms(dataset[0])
     """
-    use_background = dataset.data["names"][dataset.data["nc"] - 1] == "background"
+    use_background = dataset.use_background
     mosaic = SemSegMosaic(dataset, imgsz=imgsz, p=hyp.mosaic)
     affine = SemSegRandomPerspective(
         degrees=hyp.degrees,
@@ -3811,7 +3811,7 @@ def semseg_transforms(dataset, imgsz, hyp, stretch=False):
         scale=hyp.scale,
         shear=hyp.shear,
         perspective=hyp.perspective,
-        pre_transform=None if stretch else LetterBox(new_shape=(imgsz, imgsz)),
+        pre_transform=None if stretch else LetterBox(new_shape=(imgsz, imgsz), use_background=use_background),
         num_classes=dataset.data["nc"],
         use_background=use_background,
     )

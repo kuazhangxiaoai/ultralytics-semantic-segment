@@ -18,7 +18,7 @@ from ultralytics.utils.torch_utils import TORCH_1_11, fuse_conv_and_bn, smart_in
 from .block import DFL, SAVPE, BNContrastiveHead, ContrastiveHead, Proto, Proto26, RealNVP, Residual, SwiGLUFFN, C3k2
 from .conv import Conv, DWConv
 from .transformer import MLP, DeformableTransformerDecoder, DeformableTransformerDecoderLayer
-from .utils import bias_init_with_prob, linear_init
+from .utils import bias_init_with_prob, linear_init, window_partition, window_reverse
 
 __all__ = "OBB", "Classify", "Detect", "Pose", "RTDETRDecoder", "Segment", "YOLOEDetect", "YOLOESegment", "v10Detect", "SemanticSegment"
 
@@ -1770,6 +1770,7 @@ class v10Detect(Detect):
     def fuse(self):
         """Remove the one2many head for inference optimization."""
         self.cv2 = self.cv3 = None
+
 class ContextGather(nn.Module):
     """The implementation for context gather block Input: N X C X H X W Parameters: cls_num : the number of classes
     scale : the scale factor for probability map.
@@ -1778,7 +1779,7 @@ class ContextGather(nn.Module):
         N X C X H X W.
     """
 
-    def __init__(self, cls_num=0, scale=1):
+    def __init__(self, cls_num=0, scale=1, use_fc=True):
         super().__init__()
         self.cls_num = cls_num
         self.scale = scale
@@ -1794,13 +1795,40 @@ class ContextGather(nn.Module):
         Returns:
             attention (torch.Tensor): Attention of context
         """
-        batch_size, c, _h, _w = probs.size(0), probs.size(1), probs.size(2), probs.size(3)
+        batch_size, c, _h, _w, k = probs.size(0), probs.size(1), probs.size(2), probs.size(3), feats.size(1)
         probs = probs.view(batch_size, c, -1)
-        feats = feats.view(batch_size, feats.size(1), -1)
-        feats = feats.permute(0, 2, 1)  # batch x hw x c
+        feats = feats.view(batch_size, k, -1)
+        feats = feats.permute(0, 2, 1).contiguous()  # batch x hw x c
         probs = F.softmax(self.scale * probs, dim=2)  # batch x k x hw
-        ocr_context = torch.matmul(probs, feats).permute(0, 2, 1).unsqueeze(3)  # batch x k x c
+        ocr_context = torch.matmul(probs, feats).permute(0, 2, 1).contiguous().unsqueeze(3)  # batch x k x c
         return ocr_context
+
+class ChennelGather(nn.Module):
+    """
+        Forward methods of context attention module.
+
+            Args:
+                feats: feature map
+                probs: probability map.
+
+            Returns:
+                attention (torch.Tensor): Attention of channel
+    """
+    def __init__(self, cls_num=0, scale=1):
+        super().__init__()
+        self.cls_num = cls_num
+        self.scale = scale
+        self.relu = nn.ReLU(inplace=True)
+
+
+    def forward(self, feats, probs):
+        batch_size, c, _h, _w, k = probs.size(0), probs.size(1), probs.size(2), probs.size(3), feats.size(1)
+        probs = probs.permute(0, 2, 3, 1).contiguous().view(batch_size * _h * _w, 1, c) #[b, h * w, cls_num]
+        feats = feats.permute(0, 2, 3, 1).contiguous().view(batch_size * _h * _w, k, 1) #[b, cls_num, h*w]
+        probs = F.softmax(self.scale * probs, dim=2)  # batch x k x hw
+        channel_context = torch.matmul(feats, probs).view(batch_size, _h * _w, self.cls_num * k)  # batch x k x c
+        return channel_context.permute(0, 2, 1).contiguous().view(batch_size, self.cls_num * k, _h, _w)
+
 
 
 class _ObjectAttentionBlock(nn.Module):
@@ -1837,7 +1865,7 @@ class _ObjectAttentionBlock(nn.Module):
             Conv(c1=self.key_channels, c2=self.in_channels, k=1, s=1, p=0, act=False),
         )
 
-    def forward(self, x, proxy, gt_label=None):
+    def forward(self, x, proxy, channel): #proxy: context
         batch_size, h, w = x.size(0), x.size(2), x.size(3)
         if self.scale > 1:
             x = self.pool(x)
@@ -1855,18 +1883,16 @@ class _ObjectAttentionBlock(nn.Module):
         # add bg context ...
         context = torch.matmul(sim_map, value)  # hw x k x k x c
         context = context.permute(0, 2, 1).contiguous()
-        context = context.view(batch_size, self.key_channels, *x.size()[2:])
+        context = context.view(batch_size, self.key_channels, *x.size()[2:]) * channel
         context = self.f_up(context)
 
         if self.scale > 1:
             context = F.interpolate(input=context, size=(h, w), mode="bilinear", align_corners=True)
         return context
 
-
 class ObjectAttentionBlock2D(_ObjectAttentionBlock):
     def __init__(self, in_channels, key_channels, scale=1, use_gt=False, use_bg=False, fetch_attention=False):
         super().__init__(in_channels, key_channels, scale, use_gt, use_bg, fetch_attention)
-
 
 class SpatialOCR(nn.Module):
     """Implementation of the OCR module: We aggregate the global object representation to update the representation for
@@ -1907,7 +1933,7 @@ class SpatialOCR(nn.Module):
 
         self.conv_bn_dropout = nn.Sequential(Conv(_in_channels, out_channels, k=1, p=0), nn.Dropout2d(dropout))
 
-    def forward(self, feats, proxy_feats, gt_label=None):
+    def forward(self, feats, proxy_feats, channel, gt_label=None):
         if self.use_gt and gt_label is not None:
             if self.use_bg:
                 context, bg_context = self.object_context_block(feats, proxy_feats, gt_label)
@@ -1915,9 +1941,9 @@ class SpatialOCR(nn.Module):
                 context = self.object_context_block(feats, proxy_feats, gt_label)
         else:
             if self.fetch_attention:
-                context, sim_map = self.object_context_block(feats, proxy_feats)
+                context, sim_map = self.object_context_block(feats, proxy_feats, channel)
             else:
-                context = self.object_context_block(feats, proxy_feats)
+                context = self.object_context_block(feats, proxy_feats, channel)
 
         if self.use_bg:
             if self.use_oc:
@@ -1931,7 +1957,6 @@ class SpatialOCR(nn.Module):
             return output, sim_map
         else:
             return output
-
 
 class SemanticSegment(nn.Module):
     """YOLO Semseg head for senmantic models.
@@ -1974,9 +1999,11 @@ class SemanticSegment(nn.Module):
         )
 
         self.context_gather = ContextGather(self.nc)
+        self.channel_gather = ChennelGather(self.nc)
         self.context_ocr = SpatialOCR(
             in_channels=self.npr * 2, key_channels=self.npr, out_channels=self.npr * 2, scale=1, dropout=0.05
         )
+        self.channel_conv = Conv(self.npr * 2 * self.nc, self.npr)
 
     def forward(self, x):
         """Model forward function of semantic segment modular.
@@ -1991,12 +2018,14 @@ class SemanticSegment(nn.Module):
         f1 = x[0]
         f2 = F.interpolate(x[1], size=(h, w), mode="bilinear", align_corners=True)
         f3 = F.interpolate(x[2], size=(h, w), mode="bilinear", align_corners=True)
-        fs = torch.cat([f1, f2, f3], dim=1)
-        out_0 = self.norm_head(fs)
+        fs = torch.cat([f1, f2, f3], dim=1) #feature
+        out_0 = self.norm_head(fs) #probs
 
-        fs = self.conv(fs)
+        fs = self.conv(fs) #feature
         context = self.context_gather(fs, out_0)
-        feats = self.context_ocr(fs, context)
+        channel = self.channel_gather(fs, out_0)
+        channel = self.channel_conv(channel)
+        feats = self.context_ocr(fs, context, channel)
         out = self.cls_head(feats)
         out_0 = F.interpolate(out_0, size=(h * self.ns, w * self.ns), mode="bilinear", align_corners=True)
         out = F.interpolate(out, size=(h * self.ns, w * self.ns), mode="bilinear", align_corners=True)
@@ -2004,6 +2033,8 @@ class SemanticSegment(nn.Module):
             return out_0, out
         else:
             return out
+
+
 
 class YunetSegment(nn.Module):
     """YOLO Semseg head for senmantic models.

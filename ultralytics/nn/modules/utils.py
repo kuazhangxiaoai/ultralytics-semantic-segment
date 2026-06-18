@@ -9,8 +9,39 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch.nn.init import uniform_
 
-__all__ = "inverse_sigmoid", "multi_scale_deformable_attn_pytorch"
+__all__ = "inverse_sigmoid", "multi_scale_deformable_attn_pytorch", "window_partition"
 
+
+def window_partition(x, window_size):
+    """
+        Args:
+            x: (B, H, W, C)
+        Returns:
+            windows: (num_windows*B, window_size, window_size, C)
+    """
+    B, H, W, C = x.shape
+    window_size = window_size
+    x = x.view(B, H // window_size, window_size, W // window_size,
+               window_size, C)
+    windows = x.permute(0, 1, 3, 2, 4, 5).contiguous()
+    windows = windows.view(-1, window_size, window_size, C)
+    return windows
+
+def window_reverse(windows, window_size, H, W):
+    """
+        Args:
+            windows: (num_windows*B, window_size, window_size, C)
+            H (int): Height of image
+            W (int): Width of image
+        Returns:
+            x: (B, H, W, C)
+    """
+    window_size = window_size
+    B = int(windows.shape[0] / (H * W / window_size / window_size))
+    x = windows.view(B, H // window_size, W // window_size, window_size,
+                     window_size, -1)
+    x = x.permute(0, 1, 3, 2, 4, 5).contiguous().view(B, H, W, -1)
+    return x
 
 def _get_clones(module, n):
     """Create a list of cloned modules from the given module.

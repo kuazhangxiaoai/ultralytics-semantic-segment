@@ -1289,3 +1289,126 @@ def YOLO2Cityscapse(
             cv2.imwrite(os.path.join(cityscapes_annotation_dir, main_name + "_labelIds.png"), annotation_labelId)
         else:
             cv2.imwrite(os.path.join(cityscapes_annotation_dir, main_name + "_color.png"), n_image)
+
+def Potsdam2YOLO(image_dir, label_dir, save_dir, ratio=1., imgsz=640, overlap=128):
+    train_items = ["top_potsdam_2_10_RGB.tif",
+                 "top_potsdam_3_11_RGB.tif",
+                 "top_potsdam_4_12_RGB.tif",
+                 "top_potsdam_6_10_RGB.tif",
+                 "top_potsdam_6_8_RGB.tif",
+                 "top_potsdam_7_12_RGB.tif",
+                 "top_potsdam_2_11_RGB.tif",
+                 "top_potsdam_3_12_RGB.tif",
+                 "top_potsdam_5_10_RGB.tif",
+                 "top_potsdam_6_11_RGB.tif",
+                 "top_potsdam_6_9_RGB.tif",
+                 "top_potsdam_7_7_RGB.tif",
+                 "top_potsdam_2_12_RGB.tif",
+                 "top_potsdam_4_10_RGB.tif",
+                 "top_potsdam_5_11_RGB.tif",
+                 "top_potsdam_6_12_RGB.tif",
+                 "top_potsdam_7_10_RGB.tif",
+                 "top_potsdam_7_8_RGB.tif",
+                 "top_potsdam_3_10_RGB.tif",
+                 "top_potsdam_4_11_RGB.tif",
+                 "top_potsdam_5_12_RGB.tif",
+                 "top_potsdam_6_7_RGB.tif",
+                 "top_potsdam_7_11_RGB.tif",
+                 "top_potsdam_7_9_RGB.tif"]
+    val_items = ["top_potsdam_2_13_RGB.tif",
+                 "top_potsdam_4_14_RGB.tif",
+                 "top_potsdam_6_13_RGB.tif",
+                 "top_potsdam_2_14_RGB.tif",
+                 "top_potsdam_4_15_RGB.tif",
+                 "top_potsdam_6_14_RGB.tif",
+                 "top_potsdam_3_13_RGB.tif",
+                 "top_potsdam_5_13_RGB.tif",
+                 "top_potsdam_6_15_RGB.tif",
+                 "top_potsdam_3_14_RGB.tif",
+                 "top_potsdam_5_14_RGB.tif",
+                 "top_potsdam_7_13_RGB.tif",
+                 "top_potsdam_4_13_RGB.tif",
+                 "top_potsdam_5_15_RGB.tif",]
+
+    def get_main_name(filename):
+        return filename.split(os.sep)[-1].split('.')[0]
+
+    def split(image, name, ratio, imgsz):
+        left, top = 0, 0
+        if ratio != 1.0:
+            image = cv2.resize(image, (image.shape[0] * ratio, image.shape[1] * ratio))
+        loginfos = []
+        width, height = image.shape[1], image.shape[0]
+        slide = imgsz - overlap
+        patches = []
+        while (left < width):
+            if left + imgsz > width:
+                left = max(0, width - imgsz)
+            up = 0
+            while (up < height):
+                if up + imgsz > height:
+                    up = max(0, height - imgsz)
+                right = min(left + imgsz, width)
+                down = min(up + imgsz, height)
+                patchname = f"{name}__{left}__{up}__{int(ratio * 10)}.png"
+                patch = image[up: down, left: right, :]
+                patches.append(patch)
+                loginfos.append({
+                    'name': patchname,
+                    'left': left,
+                    'up': up,
+                    'right': right,
+                    'down': down,
+                })
+                if (down >= height):
+                    break
+                else:
+                    up = up + slide
+            if (right >= width):
+                break
+            else:
+                left = left + slide
+        return patches, loginfos
+
+    for i, item in enumerate(train_items):
+        imagefile = os.path.join(image_dir, item)
+        labelfile = os.path.join(label_dir, item.replace('RGB', 'label'))
+        image = cv2.imread(imagefile)
+        label = cv2.imread(labelfile)
+        image_patches, image_patch_info = split(image, get_main_name(imagefile), ratio, imgsz)
+        label_patches, label_patch_info = split(label, get_main_name(labelfile), ratio, imgsz)
+        train_image_dir = os.path.join(save_dir, 'train', 'image')
+        train_annotation_dir = os.path.join(save_dir, 'train', 'annotation')
+        os.makedirs(train_image_dir, exist_ok=True)
+        os.makedirs(train_annotation_dir, exist_ok=True)
+        for j, patch in enumerate(image_patches):
+            cv2.imwrite(os.path.join(train_image_dir, image_patch_info[j]['name'].replace("RGB", "patch")), patch)
+        for j, patch in enumerate(label_patches):
+            cv2.imwrite(os.path.join(train_annotation_dir, label_patch_info[j]['name'].replace("label", "patch")), patch)
+
+    for i, item in enumerate(val_items):
+        imagefile = os.path.join(image_dir, item)
+        labelfile = os.path.join(label_dir, item.replace('RGB', 'label'))
+        image = cv2.imread(imagefile)
+        label = cv2.imread(labelfile)
+        image_patches, image_patch_info = split(image, get_main_name(imagefile), ratio, imgsz)
+        label_patches, label_patch_info = split(label, get_main_name(labelfile), ratio, imgsz)
+        val_image_dir = os.path.join(save_dir, 'val', 'image')
+        val_annotation_dir = os.path.join(save_dir, 'val', 'annotation')
+        os.makedirs(val_image_dir, exist_ok=True)
+        os.makedirs(val_annotation_dir, exist_ok=True)
+        for j, patch in enumerate(image_patches):
+            cv2.imwrite(os.path.join(val_image_dir, image_patch_info[j]['name'].replace("RGB", "patch")), patch)
+        for j, patch in enumerate(label_patches):
+            cv2.imwrite(os.path.join(val_annotation_dir, label_patch_info[j]['name'].replace("label", "patch")), patch)
+
+
+if __name__ == '__main__':
+    Potsdam2YOLO(
+        "/media/yanggang/847C02507C023D84/Potsdam/Image_all",
+        "/media/yanggang/847C02507C023D84/Potsdam/Labels_all",
+        "/media/yanggang/847C02507C023D84/Potsdam640",
+    )
+
+
+

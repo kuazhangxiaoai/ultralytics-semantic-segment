@@ -1259,13 +1259,18 @@ class TVPSegmentLoss(TVPDetectLoss):
 class SemSegLoss:
     """Criterion for computing training losses for semantic segmentation task."""
 
-    def __init__(self, model, alpha=0.3, beta=0.7):
+    def __init__(self, model, alpha=0.3, beta=0.7, gamma=0.2, gate=0.05):
         """Initialize Segment Loss and criteria using the provided model."""
         self.device = next(model.parameters()).device  # get model device
         self.ce_0 = nn.CrossEntropyLoss(reduction="none")
         self.ce_1 = nn.CrossEntropyLoss(reduction="none")
+        self.ce_2 = nn.CrossEntropyLoss(reduction="none")
+        self.ce_3 = nn.CrossEntropyLoss(reduction="none")
         self.alpha = alpha
         self.beta = beta
+        self.gamma = gamma
+        self.gate = gate
+        self.use_gate = gate > 0
 
     def __call__(self, preds, batch):
         """Calculate the loss for semantic segmentation."""
@@ -1273,9 +1278,23 @@ class SemSegLoss:
         batch_size = preds[0].shape[0]  # batch size, number of masks, mask height, mask width
         if isinstance(preds, torch.Tensor):
             loss = self.ce_1(preds, gt_mask).mean()
+            if self.use_gate:
+                loss_gs = self.ce_2(preds, gt_mask)
+                loss_gs = loss_gs[loss_gs > self.gate]
+                loss_g = loss_gs.mean() if loss_gs.shape[0] > 0 else 0
+                loss = loss + self.gamma * loss_g
+            return  loss * batch_size, loss.detach()
         else:
             loss_0 = self.ce_0(preds[0], gt_mask).mean()
             loss_1 = self.ce_1(preds[1], gt_mask).mean()
             loss = self.alpha * loss_0 + self.beta * loss_1
-
-        return loss * batch_size, loss.detach()  # loss
+            if self.use_gate:
+                loss_g0 = self.ce_2(preds[0], gt_mask)
+                loss_g1 = self.ce_3(preds[1], gt_mask)
+                loss_g0 = loss_g0[loss_g0 > self.gate]
+                loss_g1 = loss_g1[loss_g1 > self.gate]
+                loss_g0 = loss_g0.mean() if loss_g0.shape[0] > 0 else 0
+                loss_g1 = loss_g1.mean() if loss_g1.shape[0] > 0 else 0
+                loss_g = self.alpha * loss_g0.mean() + self.beta * loss_g1.mean()
+                loss = loss + self.gamma * loss_g
+            return loss * batch_size, loss.detach()

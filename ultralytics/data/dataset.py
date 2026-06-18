@@ -700,7 +700,7 @@ class SemanticDataset(BaseDataset):
         self.use_keypoints = task == "pose"
         self.use_obb = task == "obb"
         self.data = data
-        self.use_background = data["names"][data["nc"] - 1] == "background"
+        self.use_background = data["names"][data["nc"] - 1] in ["background", "Background"]
         assert not (self.use_segment and self.use_keypoints)
         super().__init__(*args, **kwargs)
 
@@ -829,7 +829,12 @@ class SemanticDataset(BaseDataset):
             hyp.mixup = hyp.mixup if self.augment and not self.rect else 0.0
             transforms = semseg_transforms(self, self.imgsz, hyp)
         else:
-            transforms = Compose([LetterBox(new_shape=(self.imgsz, self.imgsz), scaleup=False, task=hyp.task)])
+            transforms = Compose([LetterBox(
+                new_shape=(self.imgsz, self.imgsz),
+                scaleup=False,
+                task=hyp.task,
+                use_background=self.use_background)]
+            )
         format = SemSegFormat(
             bbox_format="xywh",
             normalize=True,
@@ -885,8 +890,9 @@ class SemanticDataset(BaseDataset):
             mr = (mask_r == r).astype(np.uint8)
             results[:, :, i] = mb * mg * mr
             fore = np.logical_or(fore, (mb * mg * mr).astype(np.bool_))
-        bg_mask, results_bg = np.logical_not(fore), results[:, :, -1]
+
         if self.use_background:
+            bg_mask, results_bg = np.logical_not(fore), results[:, :, -1]
             results_bg[bg_mask] = 1
         return results
 

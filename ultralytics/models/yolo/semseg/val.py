@@ -320,10 +320,11 @@ class SemSegValidator(DetectionValidator):
             nc=self.data["nc"],
             names=self.data["names"],
             colors=self.data["colors"],
-            fname=self.save_dir / f"val_batch{ni}.jpg",
-            mname=self.save_dir / f"mask_batch{ni}.jpg",
+            fname=self.save_dir / f"val_batch_image_{ni}.jpg",
+            mname=self.save_dir / f"val_batch_mask_{ni}.jpg",
             on_plot=self.on_plot,
             one_hot=True,
+            background=(255,0,0)
         )
 
     def plot_predictions(self, batch, preds, ni):
